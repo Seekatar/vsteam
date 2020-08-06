@@ -1,117 +1,145 @@
 Set-StrictMode -Version Latest
 
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$sut = (Split-Path -Leaf $MyInvocation.MyCommand.Path).Replace(".Tests.", ".")
-
-. "$here/../../Source/Classes/VSTeamVersions.ps1"
-. "$here/../../Source/Classes/VSTeamProcess.ps1"
-. "$here/../../Source/Classes/VSTeamProjectCache.ps1"
-. "$here/../../Source/Classes/VSTeamProcessCache.ps1"
-. "$here/../../Source/Private/common.ps1"
-. "$here/../../Source/Public/$sut"
+Describe 'VSTeamProcess' {
+   BeforeAll {
+      $sut = (Split-Path -Leaf $PSCommandPath).Replace(".Tests.", ".")
    
-Describe 'Get-VSTeamProcess' {
-   [VSTeamVersions]::Account = 'https://dev.azure.com/test'
-   . "$PSScriptRoot\mocks\mockProcessNameDynamicParam.ps1"
+      . "$PSScriptRoot/../../Source/Classes/VSTeamVersions.ps1"
+      . "$PSScriptRoot/../../Source/Classes/VSTeamProcess.ps1"
+      . "$PSScriptRoot/../../Source/Classes/VSTeamProjectCache.ps1"
+      . "$PSScriptRoot/../../Source/Classes/VSTeamProcessCache.ps1"
+      . "$PSScriptRoot/../../Source/Classes/ProcessTemplateCompleter.ps1"
+      . "$PSScriptRoot/../../Source/Classes/ProcessValidateAttribute.ps1"
+      . "$PSScriptRoot/../../Source/Classes/ProjectValidateAttribute.ps1"
+      . "$PSScriptRoot/../../Source/Private/common.ps1"
+      . "$PSScriptRoot/../../Source/Public/$sut"
+   
+      Mock _getProjects { return @() }
+      Mock _hasProjectCacheExpired { return $true }
+      Mock _hasProcessTemplateCacheExpired { return $true }
+      Mock _getInstance { return 'https://dev.azure.com/test' }
+      Mock _getApiVersion { return '1.0-unitTests' } -ParameterFilter { $Service -eq 'Processes' }
 
-   $results = [PSCustomObject]@{
-      value = [PSCustomObject]@{
-         name        = 'Test'
+      # Note: if the call is to ...work/processes... the identity field is "TypeID". calling to ...Process/processes... it is "ID"
+      $results = [PSCustomObject]@{
+         value = @(
+            [PSCustomObject]@{
+               name        = 'Agile'
+               description = ''
+               url         = ''
+               typeid      = '123-5464-dee43'
+               isDefault   = 'false'
+               type        = 'Agile'
+            }
+            [PSCustomObject]@{
+               name        = 'Scrum'
+               description = ''
+               url         = ''
+               typeid      = '234-6575-eff54'
+               isDefault   = 'false'
+               type        = 'Agile'
+            }
+         )
+      }
+
+      $singleResult = [PSCustomObject]@{
+         name        = 'Agile'
          description = ''
          url         = ''
-         id          = '123-5464-dee43'
+         typeid      = '123-5464-dee43'
          isDefault   = 'false'
          type        = 'Agile'
       }
-   }
 
-   $singleResult = [PSCustomObject]@{
-      name        = 'Test'
-      description = ''
-      url         = ''
-      id          = '123-5464-dee43'
-      isDefault   = 'false'
-      type        = 'Agile'
-   }
-
-   Context 'Get-VSTeamProcess with no parameters using BearerToken' {
-
+      Mock Write-Warning
       Mock Invoke-RestMethod { return $results }
+      Mock Invoke-RestMethod { return $singleResult } -ParameterFilter { $Uri -like "*123-5464-dee43*" }
+   }
 
-      It 'Should return process' {
-         Get-VSTeamProcess
+   Context 'Get-VSTeamProcess' {
+      It 'should use process area for old APIs' {
+         Mock _getApiVersion { return '' } -ParameterFilter { $Service -eq 'Processes' }
 
+         ## Act
+         $p = Get-VSTeamProcess
+
+         ## Assert
+         $p.count             | should -Be 2 
+         $p[0].gettype().name | should -Be VSTeamProcess  # don't use BeOfType it's not in this scope/
          # Make sure it was called with the correct URI
-         Assert-MockCalled Invoke-RestMethod -Exactly 1 -ParameterFilter {
-            $Uri -like "*https://dev.azure.com/test/_apis/process/processes/*" -and
-            $Uri -like "*api-version=$([VSTeamVersions]::Core)*" -and
-            $Uri -like "*`$top=100*"
+         Should -Invoke Invoke-RestMethod -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Uri -like "*https://dev.azure.com/test/_apis/process/processes*"
          }
       }
-   }
 
-   Context 'Get-VSTeamProcess with top 10' {
+      It 'with no parameters using BearerToken should return process' {
+         ## Act
+         $p = Get-VSTeamProcess
 
-      Mock Invoke-RestMethod {
-         # If this test fails uncomment the line below to see how the mock was called.
-         #Write-Host $args
-         return $results 
+         ## Assert
+         $p.count             | should -Be 2 
+         $p[0].gettype().name | should -Be VSTeamProcess  # don't use BeOfType it's not in this scope/
+         # Make sure it was called with the correct URI
+         Should -Invoke Invoke-RestMethod -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Uri -like "*https://dev.azure.com/test/_apis/work/processes*" -and
+            $Uri -like "*api-version=$(_getApiVersion Processes)*" 
+         }
       }
-
-      It 'Should return top 10 process' {
+      
+      It 'with top should return warning' {
+         ## Act
          Get-VSTeamProcess -top 10
 
+         ## Assert
+         # Make sure you warn the user
+         Should -Invoke Write-Warning -Exactly -Times 1 -Scope It
+
          # Make sure it was called with the correct URI
-         Assert-MockCalled Invoke-RestMethod -Exactly 1 -ParameterFilter {
-            $Uri -like "*https://dev.azure.com/test/_apis/process/processes/*" -and
-            $Uri -like "*`$top=10*"
+         Should -Invoke Invoke-RestMethod -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Uri -like "*https://dev.azure.com/test/_apis/work/processes*" -and
+            $Uri -NotLike "*`$top=10*"
          }
       }
-   }
 
-   Context 'Get-VSTeamProcess with skip 1' {
-
-      Mock Invoke-RestMethod { return $results }
-
-      It 'Should skip first process' {
+      It 'with skip should return warning' {
+         ## Act
          Get-VSTeamProcess -skip 1
 
-         # Make sure it was called with the correct URI
-         Assert-MockCalled Invoke-RestMethod -Exactly 1 -ParameterFilter {
-            $Uri -like "*https://dev.azure.com/test/_apis/process/processes/*" -and
-            $Uri -like "*api-version=$([VSTeamVersions]::Core)*" -and
-            $Uri -like "*`$skip=1*" -and
-            $Uri -like "*`$top=100*"
-         }
-      }
-   }
-
-   Context 'Get-VSTeamProcess by Name' {
-      #Although this returns a single VSTeamProcess instance, the REST call returns multiple results
-      Mock Invoke-RestMethod { return $results }
-
-      It 'Should return Process by Name' {
-         Get-VSTeamProcess -Name Agile
+         ## Assert
+         # Make sure you warn the user
+         Should -Invoke Write-Warning -Exactly -Times 1 -Scope It
 
          # Make sure it was called with the correct URI
-         Assert-MockCalled Invoke-RestMethod -Exactly 1 -ParameterFilter {
-            $Uri -like "*https://dev.azure.com/test/_apis/process/processes/*" -and
-            $Uri -like "*api-version=$([VSTeamVersions]::Core)*"
+         Should -Invoke Invoke-RestMethod -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Uri -like "*https://dev.azure.com/test/_apis/work/processes*" -and
+            $Uri -like "*api-version=$(_getApiVersion Processes)*" -and
+            $Uri -NotLike "*`$skip=1*" -and
+            $Uri -NotLike "*`$top=100*"
          }
       }
-   }
 
-   Context 'Get-VSTeamProcess by Id' {
+      It 'by Name should return Process by Name' {
+         [VSTeamProcessCache]::timestamp = -1
+         $p = Get-VSTeamProcess -Name Agile
 
-      Mock Invoke-RestMethod { return $singleResult }
+         $p.name | should -Be  'Agile'
+         $p.id   | should -Not -BeNullOrEmpty
 
-      It 'Should return Process by Id' {
+         # Make sure it was ca lled with the correct URI
+         # Only called once for name - we don't validate the name, so wildcards can be given. 
+         Should -Invoke Invoke-RestMethod -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Uri -like "*https://dev.azure.com/test/_apis/work/processes*" -and
+            $Uri -like "*api-version=$(_getApiVersion Processes)*"
+         }
+      }
+
+      It 'by Id should return Process by Id' {
          Get-VSTeamProcess -Id '123-5464-dee43'
 
          # Make sure it was called with the correct URI
-         Assert-MockCalled Invoke-RestMethod -Exactly 1 -ParameterFilter {
-            $Uri -like "*https://dev.azure.com/test/_apis/process/processes/*" -and
-            $Uri -like "*api-version=$([VSTeamVersions]::Core)*"
+         Should -Invoke Invoke-RestMethod -Exactly -Times 1 -Scope It -ParameterFilter {
+            $Uri -like "*https://dev.azure.com/test/_apis/work/processes/123-5464-dee43*" -and
+            $Uri -like "*api-version=$(_getApiVersion Processes)*"
          }
       }
    }

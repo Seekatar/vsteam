@@ -8,6 +8,7 @@ test/sample.txt
 /docs/files.md
 /docs/index.md
 integration/prime.ps1
+integration/test/test-results.xml
 /Debugscript.txt
 .docs/files.md
 .vs/slnx.sqlite
@@ -21,3 +22,18 @@ Source/Public/vsteam.public.ps1
 Source/Private/vsteam.private.ps1
 Source/Classes/vsteam.classes.ps1
 /dist
+test-results.xml
+coverage.xml
+.editorconfig
+.vscode/*
+.DS_Store
+._.DS_Store
+**/.DS_Store
+**/._.DS_Store
+.gdn
+vsteam_Linux_ps7_tests_result.xml
+vsteam_wcore1903_ps5_tests_result.xml
+vsteam_wcore1903_ps7_tests_result.xml
+integration/fullRun.ps1
+integration/Start-PSCountdown.ps1
+integrationTest-results.xml

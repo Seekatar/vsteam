@@ -58,6 +58,8 @@ PS C:\> Merge-File -InputFile .\Source\Classes\classes.json
          }
       }
 
+      $files = $files | select-object -Unique # We don't worry about case sensitivity, because for Linux to work it needs to be cased correctly anyways
+
       # This makes sure the file is there and empty.
       # If the file already exisit it will be overwritten.
       $null = New-Item -ItemType file -Path $output -Force
@@ -154,10 +156,14 @@ function Merge-Function {
          $fileContents = Get-Content $file
 
          foreach ($line in $fileContents) {
-            $contents.AppendLine($line) | Out-Null
+            $line = ($line -replace ' +$', '')
+            if ($null -ne $line.Trim() -and '' -ne $line.Trim()) {
+               $contents.AppendLine($line) | Out-Null
+            }
          }
       }
 
+      # Remove all trailing whitespace
       Write-Output $contents.ToString()
    }
 }
@@ -194,7 +200,12 @@ function Merge-Class {
 
          # Remove move all the using statements and comments
          $newFileContents = ($fileContents -replace 'using.+', '')
-         $newFileContents = ($newFileContents -replace '#.+', '')
+
+         # Remove all trailing whitespace
+         $newFileContents = ($newFileContents -replace ' +$', '')
+         
+         # This not only removes the comment but any whitespace before it.
+         $newFileContents = ($newFileContents -replace ' +#.+', '')
          foreach ($line in $newFileContents) {
             if ($null -ne $line.Trim() -and '' -ne $line.Trim()) {
                $contents.AppendLine($line) | Out-Null

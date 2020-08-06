@@ -4,22 +4,30 @@ function Update-VSTeamVariableGroup {
       [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
       [string] $Id,
 
-      [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+      [Parameter(ParameterSetName = 'ByHashtable', Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
       [string] $Name,
 
-      [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+      [Parameter(ParameterSetName = 'ByHashtable', Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
       [string] $Description,
 
-      [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+      [Parameter(ParameterSetName = 'ByHashtable', Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
       [hashtable] $Variables,
 
-      [switch] $Force
+      [Parameter(ParameterSetName = 'ByBody', Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+      [string] $Body,
+
+      [switch] $Force,
+
+      [ProjectValidateAttribute()]
+      [ArgumentCompleter([ProjectCompleter])]
+      [Parameter(Mandatory = $true, Position = 0, ValueFromPipelineByPropertyName = $true)]
+      [string] $ProjectName
    )
 
    DynamicParam {
-      $dp = _buildProjectNameDynamicParam
+      $dp = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
 
-      if ([VSTeamVersions]::Version -ne "TFS2017") {
+      if ($(_getApiVersion -Target) -ne "TFS2017" -and $PSCmdlet.ParameterSetName -eq "ByHashtable") {
          $ParameterName = 'Type'
          $rp = _buildDynamicParam -ParameterName $ParameterName -arrSet ('Vsts', 'AzureKeyVault') -Mandatory $true
          $dp.Add($ParameterName, $rp)
@@ -33,30 +41,30 @@ function Update-VSTeamVariableGroup {
    }
 
    Process {
-      # Bind the parameter to a friendly variable
-      $ProjectName = $PSBoundParameters["ProjectName"]
-
-      $body = @{
-         name        = $Name
-         description = $Description
-         variables   = $Variables
-      }
-      if ([VSTeamVersions]::Version -ne "TFS2017") {
-         $Type = $PSBoundParameters['Type']
-         $body.Add("type", $Type)
-
-         $ProviderData = $PSBoundParameters['ProviderData']
-         if ($null -ne $ProviderData) {
-            $body.Add("providerData", $ProviderData)
+      if ([string]::IsNullOrWhiteSpace($Body)) {
+         $bodyAsHashtable = @{
+            name        = $Name
+            description = $Description
+            variables   = $Variables
          }
-      }
 
-      $body = $body | ConvertTo-Json
+         if ([VSTeamVersions]::Version -ne "TFS2017") {
+            $Type = $PSBoundParameters['Type']
+            $bodyAsHashtable.Add("type", $Type)
+
+            $ProviderData = $PSBoundParameters['ProviderData']
+            if ($null -ne $ProviderData) {
+               $bodyAsHashtable.Add("providerData", $ProviderData)
+            }
+         }
+
+         $body = $bodyAsHashtable | ConvertTo-Json
+      }
 
       if ($Force -or $pscmdlet.ShouldProcess($Id, "Update Variable Group")) {
          # Call the REST API
          $resp = _callAPI -ProjectName $projectName -Area 'distributedtask' -Resource 'variablegroups' -Id $Id  `
-            -Method Put -ContentType 'application/json' -body $body -Version $([VSTeamVersions]::VariableGroups)
+            -Method Put -ContentType 'application/json' -body $body -Version $(_getApiVersion VariableGroups)
 
          Write-Verbose $resp
 

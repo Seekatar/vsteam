@@ -1,15 +1,12 @@
 function Get-VSTeamWorkItem {
    [CmdletBinding(DefaultParameterSetName = 'ByID')]
    param(
-      [Parameter(ParameterSetName = 'ByID', Mandatory = $true, ValueFromPipeline = $true, Position = 0)]
-      [int] $Id,
-
-      [Parameter(ParameterSetName = 'List', Mandatory = $true, ValueFromPipeline = $true, Position = 0)]
-      [int[]] $Ids,
+      [Parameter(Mandatory = $true, ValueFromPipeline = $true, Position = 0)]
+      [int[]] $Id,
 
       [Parameter(ParameterSetName = 'List')]
-      [ValidateSet('Fail', 'Omit')]
-      [string] $ErrorPolicy = 'Fail',
+      [ValidateSet('fail', 'omit')]
+      [string] $ErrorPolicy = 'omit',
 
       [ValidateSet('None', 'Relations', 'Fields', 'Links', 'All')]
       [string] $Expand = 'None',
@@ -19,32 +16,34 @@ function Get-VSTeamWorkItem {
 
    Process {
       # Call the REST API
-      if ($Ids) {
-         $resp = _callAPI -Area 'wit' -Resource 'workitems'  `
-            -Version $([VSTeamVersions]::Core) `
+      if ($Id.Length -gt 1) {
+         $resp = _callAPI -NoProject -Area 'wit' -Resource 'workitems'  `
+            -Version $(_getApiVersion Core) `
             -Querystring @{
             '$Expand'   = $Expand
             fields      = ($Fields -join ',')
             errorPolicy = $ErrorPolicy
-            ids         = ($ids -join ',')
+            ids         = ($Id -join ',')
          }
 
          foreach ($item in $resp.value) {
             _applyTypesToWorkItem -item $item
          }
+
+         return $resp.value
       }
       else {
-         $a = $id[0]
-         $resp = _callAPI -Area 'wit' -Resource 'workitems'  `
-            -Version $([VSTeamVersions]::Core) -id "$a" `
+         $a = $Id[0]
+         $resp = _callAPI -NoProject -Area 'wit' -Resource 'workitems'  `
+            -Version $(_getApiVersion Core) -id "$a" `
             -Querystring @{
             '$Expand' = $Expand
             fields    = ($Fields -join ',')
          }
 
          _applyTypesToWorkItem -item $resp
-      }
 
-      return $resp
+         return $resp
+      }
    }
 }

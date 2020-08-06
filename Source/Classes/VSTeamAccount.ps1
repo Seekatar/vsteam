@@ -11,24 +11,29 @@ class VSTeamAccount : SHiPSDirectory {
       $this.AddTypeName('Team.Account')
 
       # Invalidate any cache of projects.
-      [VSTeamProjectCache]::timestamp = -1
+      [VSTeamProjectCache]::Invalidate()
    }
 
    [object[]] GetChildItem() {
-      $poolsAndProjects = @(
+      $topLevelFolders = @(
          [VSTeamPools]::new('Agent Pools'),
          [VSTeamExtensions]::new('Extensions')
          [VSTeamFeeds]::new('Feeds')
       )
+      
+      # Don't show directories not supported by the server
+      if (_testGraphSupport) {
+         $topLevelFolders += [VSTeamPermissions]::new('Permissions')
+      }
 
       $items = Get-VSTeamProject | Sort-Object Name
 
       foreach ($item in $items) {
          $item.AddTypeName('Team.Provider.Project')
-         $poolsAndProjects += $item
+         $topLevelFolders += $item
       }
 
-      return $poolsAndProjects
+      return $topLevelFolders
    }
 
    [void] hidden AddTypeName(

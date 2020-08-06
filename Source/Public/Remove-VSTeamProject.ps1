@@ -1,13 +1,15 @@
 function Remove-VSTeamProject {
    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "High")]
    param(
-      [switch] $Force
+      [switch] $Force,
+
+      [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+      [Alias('ProjectName')]
+      [ProjectValidateAttribute()]
+      [ArgumentCompleter([ProjectCompleter])]
+      [string] $Name
    )
-
-   DynamicParam {
-      _buildProjectNameDynamicParam -ParameterName 'Name' -AliasName 'ProjectName'
-   }
-
+   
    Process {
       # Bind the parameter to a friendly variable
       $ProjectName = $PSBoundParameters["Name"]
@@ -15,12 +17,12 @@ function Remove-VSTeamProject {
       if ($Force -or $pscmdlet.ShouldProcess($ProjectName, "Delete Project")) {
          # Call the REST API
          $resp = _callAPI -Area 'projects' -Id (Get-VSTeamProject $ProjectName).id `
-            -Method Delete -Version $([VSTeamVersions]::Core)
+            -Method Delete -Version $(_getApiVersion Core)
 
          _trackProjectProgress -resp $resp -title 'Deleting team project' -msg "Deleting $ProjectName"
 
          # Invalidate any cache of projects.
-         [VSTeamProjectCache]::timestamp = -1
+         [VSTeamProjectCache]::Invalidate()
 
          Write-Output "Deleted $ProjectName"
       }
